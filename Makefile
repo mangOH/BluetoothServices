@@ -5,21 +5,32 @@ CFLAGS += `pkg-config --cflags ${REQ_LIBS}`
 
 LDFLAGS += `pkg-config --libs ${REQ_LIBS}`
 
-fake_bs: main.o gen/bluez_dbus.o
+fake_bs: main.o bluez_dbus.o freedesktop_dbus.o
 	$(CC) $(CFLAGS) $(LDFLAGS) -o $@ $^
 
-main.o: main.c gen/bluez_dbus.h
+main.o: main.c bluez_dbus.h freedesktop_dbus.h
 
-gen/bluez_dbus.h: bluez_dbus_introspection.xml
-	mkdir -p gen
-	gdbus-codegen --header --interface-prefix org.bluez. --c-namespace Bluez --c-generate-object-manager --output gen/bluez_dbus.h $<
+# Generated source
+bluez_dbus.h: org.bluez.xml
+	gdbus-codegen --header --interface-prefix org.bluez. --c-namespace Bluez --output $@ $<
 
-gen/bluez_dbus.c: bluez_dbus_introspection.xml gen/bluez_dbus.h
-	mkdir -p gen
-	gdbus-codegen --body --interface-prefix org.bluez. --c-namespace Bluez --c-generate-object-manager --output gen/bluez_dbus.c $<
+bluez_dbus.c: org.bluez.xml
+	gdbus-codegen --body --interface-prefix org.bluez. --c-namespace Bluez --output $@ $<
+
+freedesktop_dbus.h: org.freedesktop.DBus.xml
+	gdbus-codegen --header --interface-prefix org.freedesktop.DBus. --c-namespace DBus --output $@ $<
+
+freedesktop_dbus.c: org.freedesktop.DBus.xml
+	gdbus-codegen --body --interface-prefix org.freedesktop.DBus. --c-namespace DBus --output $@ $<
+
+# Objects based on generated source
+bluez_dbus.o: bluez_dbus.c bluez_dbus.h
+	$(CC) -c $< $(CFLAGS)
+
+freedesktop_dbus.o: freedesktop_dbus.c freedesktop_dbus.h
+	$(CC) -c $< $(CFLAGS)
 
 clean:
 	$(RM) *.o
 	$(RM) fake_bs
-	$(RM) gen/*
-
+	$(RM) bluez_dbus.h bluez_dbus.c freedesktop_dbus.h freedesktop_dbus.c

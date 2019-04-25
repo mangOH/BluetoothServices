@@ -1,5 +1,4 @@
 // C standard library
-#include <stdio.h>
 #include <stdint.h>
 #include <stdbool.h>
 
@@ -8,7 +7,8 @@
 #include <gio/gio.h>
 
 // Local
-#include "gen/bluez_dbus.h"
+#include "bluez_dbus.h"
+#include "freedesktop_dbus.h"
 
 #define BLE_BATTERY_SERVICE_UUID "180f"
 #define BLE_BATTERY_LEVEL_CHARACTERISTIC_UUID "2a19"
@@ -36,7 +36,7 @@ static GDBusProxy* SearchForGattManager1Interface(struct BSContext *ctx)
             GDBusInterface *gattManager1Interface =
                 g_dbus_object_get_interface(obj, "org.bluez.GattManager1");
             if (gattManager1Interface != NULL) {
-                printf(
+                g_print(
                     "Found object: %s which implements org.bluez.GattManager1\n",
                     g_dbus_object_get_object_path(obj));
                 result = G_DBUS_PROXY(gattManager1Interface);
@@ -54,7 +54,7 @@ static GDBusProxy* SearchForGattManager1Interface(struct BSContext *ctx)
 static void HandleBusAcquiredForBatt(GDBusConnection *conn, const gchar *name, gpointer userData)
 {
     struct BSContext *ctx = userData;
-    printf("BusAcquired\n");
+    g_print("BusAcquired\n");
 }
 
 static void RegisterBSApplication(GDBusProxy *gattManager1Proxy, struct BSContext *ctx)
@@ -74,10 +74,10 @@ static void RegisterBSApplication(GDBusProxy *gattManager1Proxy, struct BSContex
         NULL,
         &error);
     if (error != NULL) {
-        printf("Error registering BS application: %s\n", error->message);
+        g_print("Error registering BS application: %s\n", error->message);
         exit(1);
     }
-    printf("Registered BS application\n");
+    g_print("Registered BS application\n");
     ctx->appRegistered = true;
 }
 
@@ -85,7 +85,7 @@ static void HandleNameAcquiredForBatt(
     GDBusConnection *conn, const gchar *name, gpointer userData)
 {
     struct BSContext *ctx = userData;
-    printf("NameAcquired\n");
+    g_print("NameAcquired\n");
 
     g_dbus_object_manager_server_set_connection(ctx->bsObjectManager, conn);
     ctx->appCreated = true;
@@ -101,7 +101,7 @@ static void HandleNameLostForBatt(
     GDBusConnection *conn, const gchar *name, gpointer userData)
 {
     struct BSContext *ctx = userData;
-    printf("NameLost\n");
+    g_print("NameLost\n");
 }
 
 static gboolean HandleReadValueForBattLevel(
@@ -125,18 +125,17 @@ GDBusObjectManagerServer *CreateBSObjectManager(void)
 {
     GDBusObjectManagerServer *om = g_dbus_object_manager_server_new("/io/mangoh/BatteryService");
 
-    BluezObjectSkeleton *bos = bluez_object_skeleton_new("/io/mangoh/BatteryService/service0");
+    GDBusObjectSkeleton *bos = g_dbus_object_skeleton_new("/io/mangoh/BatteryService/service0");
     BluezGattService1 *bgs = bluez_gatt_service1_skeleton_new();
-    bluez_object_skeleton_set_gatt_service1(bos, bgs);
     bluez_gatt_service1_set_uuid(bgs, BLE_BATTERY_SERVICE_UUID);
     bluez_gatt_service1_set_primary(bgs, TRUE);
+    g_dbus_object_skeleton_add_interface(bos, G_DBUS_INTERFACE_SKELETON(bgs));
     g_object_unref(bgs);
     g_dbus_object_manager_server_export(om, G_DBUS_OBJECT_SKELETON(bos));
     g_object_unref(bos);
 
-    bos = bluez_object_skeleton_new("/io/mangoh/BatteryService/service0/char0");
+    bos = g_dbus_object_skeleton_new("/io/mangoh/BatteryService/service0/char0");
     BluezGattCharacteristic1 *bgc = bluez_gatt_characteristic1_skeleton_new();
-    bluez_object_skeleton_set_gatt_characteristic1(bos, bgc);
     bluez_gatt_characteristic1_set_uuid(bgc, BLE_BATTERY_LEVEL_CHARACTERISTIC_UUID);
     const gchar *batteryLevelCharacteristicFlags[] = {
         "read",
@@ -147,8 +146,9 @@ GDBusObjectManagerServer *CreateBSObjectManager(void)
         NULL
     };
     bluez_gatt_characteristic1_set_flags(bgc, batteryLevelCharacteristicFlags);
-    bluez_gatt_characteristic1_set_service(bgc, "/service0");
+    bluez_gatt_characteristic1_set_service(bgc, "/io/mangoh/BatteryService/service0");
     g_signal_connect(bgc, "handle-read-value", G_CALLBACK(HandleReadValueForBattLevel), NULL);
+    g_dbus_object_skeleton_add_interface(bos, G_DBUS_INTERFACE_SKELETON(bgc));
     g_object_unref(bgc);
     g_dbus_object_manager_server_export(om, G_DBUS_OBJECT_SKELETON(bos));
     g_object_unref(bos);
@@ -167,7 +167,7 @@ static void BluezInterfaceAddedHandler(
     {
         GDBusProxy *interfaceProxy = G_DBUS_PROXY(interface);
         const gchar *interfaceName = g_dbus_proxy_get_interface_name(interfaceProxy);
-        printf("signal interface-added for interface %s\n", interfaceName);
+        g_print("signal interface-added for interface %s\n", interfaceName);
         if (strcmp(interfaceName, "org.bluez.GattManager1") == 0) {
             RegisterBSApplication(interfaceProxy, ctx);
         }
@@ -181,27 +181,30 @@ static void BluezInterfaceRemovedHandler(
     gpointer context)
 {
     GDBusProxy *interfaceProxy = G_DBUS_PROXY(interface);
-    printf(
+    g_print(
         "signal interface-removed for interface %s\n",
         g_dbus_proxy_get_interface_name(interfaceProxy));
 }
 
 int main(int argc, char **argv)
 {
-    printf("Starting fake battery service!\n");
+    g_print("Starting fake battery service!\n");
 
     struct BSContext ctx;
     ctx.mainLoop = g_main_loop_new(NULL, FALSE);
     GError *error = NULL;
-    ctx.bluezObjectManager = bluez_object_manager_client_new_for_bus_sync(
+    ctx.bluezObjectManager = g_dbus_object_manager_client_new_for_bus_sync(
         G_BUS_TYPE_SYSTEM,
         G_DBUS_OBJECT_MANAGER_CLIENT_FLAGS_NONE,
         "org.bluez",
         "/",
         NULL,
+        NULL,
+        NULL,
+        NULL,
         &error);
     if (error != NULL) {
-        printf("Error creating bluez object manager client: %s\n", error->message);
+        g_print("Error creating bluez object manager client: %s\n", error->message);
         exit(1);
     }
     ctx.bsObjectManager = CreateBSObjectManager();
