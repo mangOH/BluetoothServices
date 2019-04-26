@@ -18,7 +18,7 @@ struct BSContext {
     bool notifying;
     GMainLoop *mainLoop;
     GDBusObjectManagerServer *bsObjectManager;
-    GDBusObjectManager *bluezObjectManager;
+    GDBusObjectManagerClient *bluezObjectManager;
     struct {
         gulong interfaceAdded;
         gulong interfaceRemoved;
@@ -27,10 +27,31 @@ struct BSContext {
     bool appCreated;
 };
 
-static GDBusProxy* SearchForGattManager1Interface(struct BSContext *ctx)
+static BluezGattManager1 *CreateGattManager(GDBusObjectManagerClient *manager, GDBusObject *obj)
 {
-    GDBusProxy *result = NULL;
-    GList *objIt = g_dbus_object_manager_get_objects(ctx->bluezObjectManager);
+    BluezGattManager1 *result = NULL;
+    const gchar *name =  g_dbus_object_manager_client_get_name(manager);
+    const gchar *path = g_dbus_object_get_object_path(obj);
+    GDBusConnection *conn = g_dbus_object_manager_client_get_connection(manager);
+    GError *error = NULL;
+    result = bluez_gatt_manager1_proxy_new_sync(
+        g_dbus_object_manager_client_get_connection(manager),
+        G_DBUS_PROXY_FLAGS_NONE,
+        name,
+        path,
+        NULL,
+        &error);
+    if (error)
+        g_error("Failed to create gatt manager: %s\n", error->message);
+
+    return result;
+}
+
+static BluezGattManager1 *SearchForGattManager1Interface(struct BSContext *ctx)
+{
+    BluezGattManager1 *result = NULL;
+    GList *objIt = g_dbus_object_manager_get_objects(
+        G_DBUS_OBJECT_MANAGER(ctx->bluezObjectManager));
     while (objIt != NULL) {
         GDBusObject *obj = objIt->data;
 
@@ -38,10 +59,7 @@ static GDBusProxy* SearchForGattManager1Interface(struct BSContext *ctx)
             GDBusInterface *gattManager1Interface =
                 g_dbus_object_get_interface(obj, "org.bluez.GattManager1");
             if (gattManager1Interface != NULL) {
-                g_print(
-                    "Found object: %s which implements org.bluez.GattManager1\n",
-                    g_dbus_object_get_object_path(obj));
-                result = G_DBUS_PROXY(gattManager1Interface);
+                result = CreateGattManager(ctx->bluezObjectManager, obj);
             }
         }
 
@@ -58,7 +76,8 @@ void ApplicationRegisteredCallback(
 {
     struct BSContext *ctx = user_data;
     GError *error = NULL;
-    GVariant *result = g_dbus_proxy_call_finish(G_DBUS_PROXY(source_object), res, &error);
+    bluez_gatt_manager1_call_register_application_finish(
+        BLUEZ_GATT_MANAGER1(source_object), res, &error);
     if (error != NULL) {
         g_print("Error registering BS application: %s\n", error->message);
         exit(1);
@@ -67,40 +86,20 @@ void ApplicationRegisteredCallback(
     ctx->appRegistered = true;
 }
 
-static void RegisterBSApplication(GDBusProxy *gattManager1Proxy, struct BSContext *ctx)
+static void RegisterBSApplication(BluezGattManager1 *gattManager1, struct BSContext *ctx)
 {
-    GError *error = NULL;
-    const gchar *application = "/io/mangoh/BatteryService";
     GVariantBuilder *optionsBuilder = g_variant_builder_new(G_VARIANT_TYPE("a{sv}"));
-    // TODO: Options required?
-    // g_variant_builder_add(optionsBuilder, "{sv}", "name", g_variant_new_string("Bob"));
     GVariant *options = g_variant_builder_end(optionsBuilder);
-    g_dbus_proxy_call(
-        gattManager1Proxy,
-        "RegisterApplication",
-        g_variant_new("(o@a{sv})", application, options),
-        G_DBUS_CALL_FLAGS_NONE,
-        -1,
+    g_variant_builder_unref(optionsBuilder);
+    bluez_gatt_manager1_call_register_application(
+        gattManager1,
+        "/io/mangoh/BatteryService",
+        options,
         NULL,
         ApplicationRegisteredCallback,
         ctx);
-    /*
-    GVariant *res = g_dbus_proxy_call_sync(
-        gattManager1Proxy,
-        "RegisterApplication",
-        g_variant_new("(o@a{sv})", application, options),
-        G_DBUS_CALL_FLAGS_NONE,
-        -1,
-        NULL,
-        &error);
-    if (error != NULL) {
-        g_print("Error registering BS application: %s\n", error->message);
-        exit(1);
-    }
-    g_print("Registered BS application\n");
-    ctx->appRegistered = true;
-    */
 }
+
 
 static void HandleBusAcquiredForBatt(GDBusConnection *conn, const gchar *name, gpointer userData)
 {
@@ -109,12 +108,12 @@ static void HandleBusAcquiredForBatt(GDBusConnection *conn, const gchar *name, g
 
     g_dbus_object_manager_server_set_connection(ctx->bsObjectManager, conn);
     ctx->appCreated = true;
-    GDBusProxy *gattManager1InterfaceProxy = SearchForGattManager1Interface(ctx);
-    if (gattManager1InterfaceProxy != NULL)
+    BluezGattManager1 *gattManager1 = SearchForGattManager1Interface(ctx);
+    if (gattManager1 != NULL)
     {
-        RegisterBSApplication(gattManager1InterfaceProxy, ctx);
+        RegisterBSApplication(gattManager1, ctx);
     }
-    g_object_unref(gattManager1InterfaceProxy);
+    g_object_unref(gattManager1);
 }
 
 static void HandleNameAcquiredForBatt(
@@ -193,10 +192,7 @@ static gboolean HandleReadValueForBattLevel(
 
 GDBusObjectManagerServer *CreateBSObjectManager(struct BSContext *ctx)
 {
-    // TODO: bluez doc file gatt-api.txt gives mixed messages about the path under which the object
-    // manager should appear.
     GDBusObjectManagerServer *om = g_dbus_object_manager_server_new("/io/mangoh/BatteryService");
-    //GDBusObjectManagerServer *om = g_dbus_object_manager_server_new("/");
 
     GDBusObjectSkeleton *bos = g_dbus_object_skeleton_new("/io/mangoh/BatteryService/service0");
     BluezGattService1 *bgs = bluez_gatt_service1_skeleton_new();
@@ -242,7 +238,11 @@ static void BluezInterfaceAddedHandler(
         const gchar *interfaceName = g_dbus_proxy_get_interface_name(interfaceProxy);
         g_print("signal interface-added for interface %s\n", interfaceName);
         if (strcmp(interfaceName, "org.bluez.GattManager1") == 0) {
-            RegisterBSApplication(interfaceProxy, ctx);
+
+            BluezGattManager1 *gattManager1 = CreateGattManager(
+                G_DBUS_OBJECT_MANAGER_CLIENT(manager), object);
+            RegisterBSApplication(gattManager1, ctx);
+            g_object_unref(gattManager1);
         }
     }
 }
@@ -263,17 +263,10 @@ int main(int argc, char **argv)
 {
     g_print("Starting fake battery service!\n");
 
-
-
-    const guint8 valueArray[] = {53};
-    GVariant *value = g_variant_new_fixed_array(
-        G_VARIANT_TYPE_BYTE, valueArray, G_N_ELEMENTS(valueArray), sizeof(valueArray[0]));
-    g_variant_ref_sink(value);
-
-    struct BSContext ctx;
+    struct BSContext ctx = { .batt_percent=50, .notifying=false };
     ctx.mainLoop = g_main_loop_new(NULL, FALSE);
     GError *error = NULL;
-    ctx.bluezObjectManager = g_dbus_object_manager_client_new_for_bus_sync(
+    GDBusObjectManager *bluezObjectManager = g_dbus_object_manager_client_new_for_bus_sync(
         G_BUS_TYPE_SYSTEM,
         G_DBUS_OBJECT_MANAGER_CLIENT_FLAGS_NONE,
         "org.bluez",
@@ -287,6 +280,7 @@ int main(int argc, char **argv)
         g_print("Error creating bluez object manager client: %s\n", error->message);
         exit(1);
     }
+    ctx.bluezObjectManager = G_DBUS_OBJECT_MANAGER_CLIENT(bluezObjectManager);
     ctx.bsObjectManager = CreateBSObjectManager(&ctx);
 
     guint id = g_bus_own_name(
