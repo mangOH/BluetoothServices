@@ -131,8 +131,9 @@ static void HandleNameLostForBatt(
     g_print("NameLost\n");
 }
 
-static void AdjustBatteryLevel(guint8 *percentage)
+static gboolean AdjustBatteryLevel(gpointer user_data)
 {
+    guint8 *percentage = user_data;
     static gint8 delta = -1;
     if (*percentage == 0 && delta == -1)
         delta = 1;
@@ -179,9 +180,9 @@ static gboolean HandleReadValueForBattLevel(
     const GVariant *options,
     gpointer user_data)
 {
+    struct BSContext *ctx = user_data;
     g_print("HandleReadValueForBattLevel called\n");
-    // Send 53% battery for now
-    guint8 valueArray[] = {53};
+    guint8 valueArray[] = {ctx->batt_percent};
     GVariant *value = g_variant_new_fixed_array(
         G_VARIANT_TYPE_BYTE, valueArray, G_N_ELEMENTS(valueArray), sizeof(valueArray[0]));
 
@@ -190,7 +191,7 @@ static gboolean HandleReadValueForBattLevel(
     return TRUE;
 }
 
-GDBusObjectManagerServer *CreateBSObjectManager(void)
+GDBusObjectManagerServer *CreateBSObjectManager(struct BSContext *ctx)
 {
     // TODO: bluez doc file gatt-api.txt gives mixed messages about the path under which the object
     // manager should appear.
@@ -219,7 +220,7 @@ GDBusObjectManagerServer *CreateBSObjectManager(void)
     };
     bluez_gatt_characteristic1_set_flags(bgc, batteryLevelCharacteristicFlags);
     bluez_gatt_characteristic1_set_service(bgc, "/io/mangoh/BatteryService/service0");
-    g_signal_connect(bgc, "handle-read-value", G_CALLBACK(HandleReadValueForBattLevel), NULL);
+    g_signal_connect(bgc, "handle-read-value", G_CALLBACK(HandleReadValueForBattLevel), ctx);
     g_dbus_object_skeleton_add_interface(bos, G_DBUS_INTERFACE_SKELETON(bgc));
     g_object_unref(bgc);
     g_dbus_object_manager_server_export(om, G_DBUS_OBJECT_SKELETON(bos));
@@ -286,7 +287,7 @@ int main(int argc, char **argv)
         g_print("Error creating bluez object manager client: %s\n", error->message);
         exit(1);
     }
-    ctx.bsObjectManager = CreateBSObjectManager();
+    ctx.bsObjectManager = CreateBSObjectManager(&ctx);
 
     guint id = g_bus_own_name(
         G_BUS_TYPE_SYSTEM,
@@ -310,6 +311,7 @@ int main(int argc, char **argv)
         G_CALLBACK(BluezInterfaceRemovedHandler),
         &ctx);
 
+    g_timeout_add(10000, AdjustBatteryLevel, &ctx.batt_percent);
     g_main_loop_run(ctx.mainLoop);
 
     g_bus_unown_name(id);
