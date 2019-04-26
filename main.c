@@ -14,6 +14,8 @@
 #define BLE_BATTERY_LEVEL_CHARACTERISTIC_UUID "2a19"
 
 struct BSContext {
+    guint8 batt_percent;
+    bool notifying;
     GMainLoop *mainLoop;
     GDBusObjectManagerServer *bsObjectManager;
     GDBusObjectManager *bluezObjectManager;
@@ -51,10 +53,18 @@ static GDBusProxy* SearchForGattManager1Interface(struct BSContext *ctx)
     return result;
 }
 
-static void HandleBusAcquiredForBatt(GDBusConnection *conn, const gchar *name, gpointer userData)
+void ApplicationRegisteredCallback(
+    GObject *source_object, GAsyncResult *res, gpointer user_data)
 {
-    struct BSContext *ctx = userData;
-    g_print("BusAcquired\n");
+    struct BSContext *ctx = user_data;
+    GError *error = NULL;
+    GVariant *result = g_dbus_proxy_call_finish(G_DBUS_PROXY(source_object), res, &error);
+    if (error != NULL) {
+        g_print("Error registering BS application: %s\n", error->message);
+        exit(1);
+    }
+    g_print("Registered BS application\n");
+    ctx->appRegistered = true;
 }
 
 static void RegisterBSApplication(GDBusProxy *gattManager1Proxy, struct BSContext *ctx)
@@ -65,6 +75,16 @@ static void RegisterBSApplication(GDBusProxy *gattManager1Proxy, struct BSContex
     // TODO: Options required?
     // g_variant_builder_add(optionsBuilder, "{sv}", "name", g_variant_new_string("Bob"));
     GVariant *options = g_variant_builder_end(optionsBuilder);
+    g_dbus_proxy_call(
+        gattManager1Proxy,
+        "RegisterApplication",
+        g_variant_new("(o@a{sv})", application, options),
+        G_DBUS_CALL_FLAGS_NONE,
+        -1,
+        NULL,
+        ApplicationRegisteredCallback,
+        ctx);
+    /*
     GVariant *res = g_dbus_proxy_call_sync(
         gattManager1Proxy,
         "RegisterApplication",
@@ -79,13 +99,13 @@ static void RegisterBSApplication(GDBusProxy *gattManager1Proxy, struct BSContex
     }
     g_print("Registered BS application\n");
     ctx->appRegistered = true;
+    */
 }
 
-static void HandleNameAcquiredForBatt(
-    GDBusConnection *conn, const gchar *name, gpointer userData)
+static void HandleBusAcquiredForBatt(GDBusConnection *conn, const gchar *name, gpointer userData)
 {
     struct BSContext *ctx = userData;
-    g_print("NameAcquired\n");
+    g_print("BusAcquired\n");
 
     g_dbus_object_manager_server_set_connection(ctx->bsObjectManager, conn);
     ctx->appCreated = true;
@@ -97,6 +117,13 @@ static void HandleNameAcquiredForBatt(
     g_object_unref(gattManager1InterfaceProxy);
 }
 
+static void HandleNameAcquiredForBatt(
+    GDBusConnection *conn, const gchar *name, gpointer userData)
+{
+    struct BSContext *ctx = userData;
+    g_print("NameAcquired\n");
+}
+
 static void HandleNameLostForBatt(
     GDBusConnection *conn, const gchar *name, gpointer userData)
 {
@@ -104,26 +131,71 @@ static void HandleNameLostForBatt(
     g_print("NameLost\n");
 }
 
+static void AdjustBatteryLevel(guint8 *percentage)
+{
+    static gint8 delta = -1;
+    if (*percentage == 0 && delta == -1)
+        delta = 1;
+    else if (*percentage == 100 && delta == 1)
+        delta = -1;
+
+    *percentage = *percentage + delta;
+}
+
+static void NotifyBatteryLevel(void)
+{
+    // TODO
+}
+
+static gboolean HandleStartNotifyForBattLevel(
+    BluezGattCharacteristic1 *interface,
+    GDBusMethodInvocation *invocation,
+    gpointer user_data)
+{
+    struct BSContext *ctx = user_data;
+    if (!ctx->notifying)
+    {
+        ctx->notifying = true;
+        NotifyBatteryLevel();
+    }
+
+    return TRUE;
+}
+
+static gboolean HandleStopNotifyForBattLevel(
+    BluezGattCharacteristic1 *interface,
+    GDBusMethodInvocation *invocation,
+    gpointer user_data)
+{
+    struct BSContext *ctx = user_data;
+    ctx->notifying = false;
+
+    return TRUE;
+}
+
 static gboolean HandleReadValueForBattLevel(
     BluezGattCharacteristic1 *interface,
     GDBusMethodInvocation *invocation,
     const GVariant *options,
-    GVariant **value,
     gpointer user_data)
 {
+    g_print("HandleReadValueForBattLevel called\n");
     // Send 53% battery for now
-    const guint8 valueArray[] = {53};
-    *value = g_variant_new_fixed_array(
+    guint8 valueArray[] = {53};
+    GVariant *value = g_variant_new_fixed_array(
         G_VARIANT_TYPE_BYTE, valueArray, G_N_ELEMENTS(valueArray), sizeof(valueArray[0]));
 
-    g_variant_ref_sink(*value);
+    g_dbus_method_invocation_return_value(invocation, g_variant_new_tuple(&value, 1));
 
     return TRUE;
 }
 
 GDBusObjectManagerServer *CreateBSObjectManager(void)
 {
+    // TODO: bluez doc file gatt-api.txt gives mixed messages about the path under which the object
+    // manager should appear.
     GDBusObjectManagerServer *om = g_dbus_object_manager_server_new("/io/mangoh/BatteryService");
+    //GDBusObjectManagerServer *om = g_dbus_object_manager_server_new("/");
 
     GDBusObjectSkeleton *bos = g_dbus_object_skeleton_new("/io/mangoh/BatteryService/service0");
     BluezGattService1 *bgs = bluez_gatt_service1_skeleton_new();
@@ -189,6 +261,13 @@ static void BluezInterfaceRemovedHandler(
 int main(int argc, char **argv)
 {
     g_print("Starting fake battery service!\n");
+
+
+
+    const guint8 valueArray[] = {53};
+    GVariant *value = g_variant_new_fixed_array(
+        G_VARIANT_TYPE_BYTE, valueArray, G_N_ELEMENTS(valueArray), sizeof(valueArray[0]));
+    g_variant_ref_sink(value);
 
     struct BSContext ctx;
     ctx.mainLoop = g_main_loop_new(NULL, FALSE);

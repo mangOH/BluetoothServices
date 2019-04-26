@@ -52,25 +52,43 @@
       <arg name="options" type="a{sv}" direction="in"/>
     </method>
     <!-- optional -->
+    <!--
     <method name="AcquireWrite">
       <arg name="options" type="a{sv}" direction="in"/>
       <arg name="fd" type="q" direction="out"/>
     </method>
+    -->
     <!-- optional -->
+    <!--
     <method name="AcquireNotify">
       <arg name="options" type="a{sv}" direction="in"/>
       <arg name="fd" type="q" direction="out"/>
     </method>
+    -->
     <method name="StartNotify"></method>
     <method name="StopNotify"></method>
     <!-- optional -->
+    <!--
     <method name="Confirm"></method>
+    -->
     <property name="UUID" type="s" access="read"/>
     <property name="Service" type="o" access="read"/>
-    <property name="Value" type="ay" access="read"/><!-- optional -->
-    <property name="WriteAcquired" type="b" access="read"/><!-- optional -->
-    <property name="NotifyAcquired" type="b" access="read"/><!-- optional -->
-    <property name="Notifying" type="b" access="read"/><!-- optional -->
+    <!-- optional -->
+    <!--
+    <property name="Value" type="ay" access="read"/>
+    -->
+    <!-- optional -->
+    <!--
+    <property name="WriteAcquired" type="b" access="read"/>
+    -->
+    <!-- optional -->
+    <!--
+    <property name="NotifyAcquired" type="b" access="read"/>
+    -->
+    <!-- optional -->
+    <!--
+    <property name="Notifying" type="b" access="read"/>
+    -->
     <property name="Flags" type="as" access="read"/>
   </interface>
 
@@ -84,15 +102,24 @@
       <arg name="options" type="a{sv}" direction="in"/>
     </method>
     <property name="UUID" type="s" access="read"/>
-    <property name="Value" type="ay" access="read"/><!-- optional -->
+    <!-- optional -->
+    <!--
+    <property name="Value" type="ay" access="read"/>
+    -->
     <property name="Flags" type="as" access="read"/>
   </interface>
 
   <interface name="org.bluez.GattService1">
     <property name="UUID" type="s" access="read"/>
-    <property name="primary" type="b" access="read"/>
-    <property name="Device" type="o" access="read"/><!-- optional -->
-    <property name="Includes" type="ao" access="read"/><!-- optional -->
+    <property name="Primary" type="b" access="read"/>
+    <!-- optional -->
+    <!--
+    <property name="Device" type="o" access="read"/>
+    -->
+    <!-- optional -->
+    <!--
+    <property name="Includes" type="ao" access="read"/>
+    -->
   </interface>
   <interface name="org.bluez.GattManager1">
     <method name="RegisterApplication">
