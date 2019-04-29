@@ -12,6 +12,7 @@
 
 #define BLE_BATTERY_SERVICE_UUID "180f"
 #define BLE_BATTERY_LEVEL_CHARACTERISTIC_UUID "2a19"
+#define BLUE_CCCD_UUID "2902"
 
 struct BSContext {
     guint8 batt_percent;
@@ -19,6 +20,7 @@ struct BSContext {
     GMainLoop *mainLoop;
     GDBusObjectManagerServer *bsObjectManager;
     GDBusObjectManagerClient *bluezObjectManager;
+    BluezGattCharacteristic1 *battery_characteristic;
     struct {
         gulong interfaceAdded;
         gulong interfaceRemoved;
@@ -130,21 +132,43 @@ static void HandleNameLostForBatt(
     g_print("NameLost\n");
 }
 
-static gboolean AdjustBatteryLevel(gpointer user_data)
+static void NotifyBatteryLevel(
+    BluezGattCharacteristic1 *gattCharacteristicObject,
+    guint8 battery_percent)
 {
-    guint8 *percentage = user_data;
-    static gint8 delta = -1;
-    if (*percentage == 0 && delta == -1)
-        delta = 1;
-    else if (*percentage == 100 && delta == 1)
-        delta = -1;
+    const gchar *interface_changed = "org.bluez.GattCharacteristic1";
+    GVariantDict *changed_properties;
+    g_variant_dict_init(changed_properties, NULL);
 
-    *percentage = *percentage + delta;
+    guint8 valueArray[] = {battery_percent};
+    GVariant *value = g_variant_new_fixed_array(
+        G_VARIANT_TYPE_BYTE, valueArray, G_N_ELEMENTS(valueArray), sizeof(valueArray[0]));
+    g_variant_dict_insert_value(changed_properties, "Value", value);
+
+    GVariant *invalidated_properties = g_variant_new_array(G_VARIANT_TYPE_STRING, NULL, 0);
+
+    bluez_gatt_characteristic1_set_value(gattCharacteristicObject, value);
+    bluez_gatt_characteristic1_emit_properties_changed(
+        gattCharacteristicObject,
+        interface_changed,
+        g_variant_dict_end(changed_properties),
+        invalidated_properties);
 }
 
-static void NotifyBatteryLevel(void)
+static gboolean AdjustBatteryLevel(gpointer user_data)
 {
-    // TODO
+    struct BSContext *ctx = user_data;
+    static gint8 delta = -1;
+    if (ctx->batt_percent == 0 && delta == -1)
+        delta = 1;
+    else if (ctx->batt_percent == 100 && delta == 1)
+        delta = -1;
+
+    ctx->batt_percent = ctx->batt_percent + delta;
+
+    if (ctx->notifying) {
+        NotifyBatteryLevel(ctx->battery_characteristic, ctx->batt_percent);
+    }
 }
 
 static gboolean HandleStartNotifyForBattLevel(
@@ -156,9 +180,10 @@ static gboolean HandleStartNotifyForBattLevel(
     if (!ctx->notifying)
     {
         ctx->notifying = true;
-        NotifyBatteryLevel();
+        NotifyBatteryLevel(interface, ctx->batt_percent);
     }
 
+    bluez_gatt_characteristic1_complete_start_notify(interface, invocation);
     return TRUE;
 }
 
@@ -170,6 +195,7 @@ static gboolean HandleStopNotifyForBattLevel(
     struct BSContext *ctx = user_data;
     ctx->notifying = false;
 
+    bluez_gatt_characteristic1_complete_stop_notify(interface, invocation);
     return TRUE;
 }
 
@@ -185,6 +211,7 @@ static gboolean HandleReadValueForBattLevel(
     GVariant *value = g_variant_new_fixed_array(
         G_VARIANT_TYPE_BYTE, valueArray, G_N_ELEMENTS(valueArray), sizeof(valueArray[0]));
 
+    bluez_gatt_characteristic1_set_value(interface, value);
     g_dbus_method_invocation_return_value(invocation, g_variant_new_tuple(&value, 1));
 
     return TRUE;
@@ -208,17 +235,31 @@ GDBusObjectManagerServer *CreateBSObjectManager(struct BSContext *ctx)
     bluez_gatt_characteristic1_set_uuid(bgc, BLE_BATTERY_LEVEL_CHARACTERISTIC_UUID);
     const gchar *batteryLevelCharacteristicFlags[] = {
         "read",
-        /*
-         * TODO: Other flags required? It seems like notify would be useful, but
-         * adds some work in terms of required methods.
-         */
+        "notify",
         NULL
     };
     bluez_gatt_characteristic1_set_flags(bgc, batteryLevelCharacteristicFlags);
     bluez_gatt_characteristic1_set_service(bgc, "/io/mangoh/BatteryService/service0");
     g_signal_connect(bgc, "handle-read-value", G_CALLBACK(HandleReadValueForBattLevel), ctx);
+    g_signal_connect(bgc, "handle-start-notify", G_CALLBACK(HandleStartNotifyForBattLevel), ctx);
+    g_signal_connect(bgc, "handle-stop-notify", G_CALLBACK(HandleStopNotifyForBattLevel), ctx);
     g_dbus_object_skeleton_add_interface(bos, G_DBUS_INTERFACE_SKELETON(bgc));
-    g_object_unref(bgc);
+    ctx->battery_characteristic = bgc;
+    g_dbus_object_manager_server_export(om, G_DBUS_OBJECT_SKELETON(bos));
+    g_object_unref(bos);
+
+
+    bos = g_dbus_object_skeleton_new("/io/mangoh/BatteryService/service0/char0/desc0");
+    BluezGattDescriptor1 *bgd = bluez_gatt_descriptor1_skeleton_new();
+    bluez_gatt_descriptor1_set_uuid(bgd, BLUE_CCCD_UUID);
+    bluez_gatt_descriptor1_set_characteristic(bgd, "/io/mangoh/BatteryService/service0/char0");
+    const gchar *batteryLevelDescriptorFlags[] = {
+        "read",
+        NULL
+    };
+    bluez_gatt_descriptor1_set_flags(bgd, batteryLevelDescriptorFlags);
+    g_dbus_object_skeleton_add_interface(bos, G_DBUS_INTERFACE_SKELETON(bgd));
+    g_object_unref(bgd);
     g_dbus_object_manager_server_export(om, G_DBUS_OBJECT_SKELETON(bos));
     g_object_unref(bos);
 
@@ -305,7 +346,7 @@ int main(int argc, char **argv)
         G_CALLBACK(BluezInterfaceRemovedHandler),
         &ctx);
 
-    g_timeout_add(10000, AdjustBatteryLevel, &ctx.batt_percent);
+    g_timeout_add(10000, AdjustBatteryLevel, &ctx);
     g_main_loop_run(ctx.mainLoop);
 
     g_bus_unown_name(id);

@@ -74,9 +74,10 @@
     <property name="UUID" type="s" access="read"/>
     <property name="Service" type="o" access="read"/>
     <!-- optional -->
-    <!--
-    <property name="Value" type="ay" access="read"/>
-    -->
+    <property name="Value" type="ay" access="read">
+      <!-- Required so that gdbus-codegen doesn't generate broken bindings -->
+      <annotation name="org.gtk.GDBus.C.ForceGVariant" value="true"/>
+    </property>
     <!-- optional -->
     <!--
     <property name="WriteAcquired" type="b" access="read"/>
@@ -90,6 +91,13 @@
     <property name="Notifying" type="b" access="read"/>
     -->
     <property name="Flags" type="as" access="read"/>
+    <signal name="PropertiesChanged">
+      <arg name="interface" type="s"/>
+      <arg name="changed_properties" type="a{sv}"/>
+      <arg name="invalidated_properties" type="as">
+        <annotation name="org.gtk.GDBus.C.ForceGVariant" value="true"/>
+      </arg>
+    </signal>
   </interface>
 
   <interface name="org.bluez.GattDescriptor1">
@@ -102,6 +110,7 @@
       <arg name="options" type="a{sv}" direction="in"/>
     </method>
     <property name="UUID" type="s" access="read"/>
+    <property name="Characteristic" type="o" access="read"/>
     <!-- optional -->
     <!--
     <property name="Value" type="ay" access="read"/>
