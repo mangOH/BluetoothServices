@@ -37,7 +37,7 @@ static BluezGattManager1 *CreateGattManager(GDBusObjectManagerClient *manager, G
     GDBusConnection *conn = g_dbus_object_manager_client_get_connection(manager);
     GError *error = NULL;
     result = bluez_gatt_manager1_proxy_new_sync(
-        g_dbus_object_manager_client_get_connection(manager),
+        conn,
         G_DBUS_PROXY_FLAGS_NONE,
         name,
         path,
@@ -121,14 +121,12 @@ static void HandleBusAcquiredForBatt(GDBusConnection *conn, const gchar *name, g
 static void HandleNameAcquiredForBatt(
     GDBusConnection *conn, const gchar *name, gpointer userData)
 {
-    struct BSContext *ctx = userData;
     g_print("NameAcquired\n");
 }
 
 static void HandleNameLostForBatt(
     GDBusConnection *conn, const gchar *name, gpointer userData)
 {
-    struct BSContext *ctx = userData;
     g_print("NameLost\n");
 }
 
@@ -136,23 +134,25 @@ static void NotifyBatteryLevel(
     BluezGattCharacteristic1 *gattCharacteristicObject,
     guint8 battery_percent)
 {
-    const gchar *interface_changed = "org.bluez.GattCharacteristic1";
-    GVariantDict *changed_properties;
-    g_variant_dict_init(changed_properties, NULL);
+    // const gchar *interface_changed = "org.bluez.GattCharacteristic1";
+    // GVariantDict *changed_properties;
+    // g_variant_dict_init(changed_properties, NULL);
 
     guint8 valueArray[] = {battery_percent};
     GVariant *value = g_variant_new_fixed_array(
         G_VARIANT_TYPE_BYTE, valueArray, G_N_ELEMENTS(valueArray), sizeof(valueArray[0]));
-    g_variant_dict_insert_value(changed_properties, "Value", value);
+    // g_variant_dict_insert_value(changed_properties, "Value", value);
 
-    GVariant *invalidated_properties = g_variant_new_array(G_VARIANT_TYPE_STRING, NULL, 0);
+    // GVariant *invalidated_properties = g_variant_new_array(G_VARIANT_TYPE_STRING, NULL, 0);
 
     bluez_gatt_characteristic1_set_value(gattCharacteristicObject, value);
+    /*
     bluez_gatt_characteristic1_emit_properties_changed(
         gattCharacteristicObject,
         interface_changed,
         g_variant_dict_end(changed_properties),
         invalidated_properties);
+    */
 }
 
 static gboolean AdjustBatteryLevel(gpointer user_data)
@@ -166,9 +166,13 @@ static gboolean AdjustBatteryLevel(gpointer user_data)
 
     ctx->batt_percent = ctx->batt_percent + delta;
 
+    g_print("Adjusted battery level to %u\n", ctx->batt_percent);
+
     if (ctx->notifying) {
         NotifyBatteryLevel(ctx->battery_characteristic, ctx->batt_percent);
     }
+
+    return TRUE;
 }
 
 static gboolean HandleStartNotifyForBattLevel(
@@ -210,9 +214,21 @@ static gboolean HandleReadValueForBattLevel(
     guint8 valueArray[] = {ctx->batt_percent};
     GVariant *value = g_variant_new_fixed_array(
         G_VARIANT_TYPE_BYTE, valueArray, G_N_ELEMENTS(valueArray), sizeof(valueArray[0]));
+    //g_variant_ref_sink(value);
+    //g_variant_take_ref(value);
 
+    g_print("1. g_variant_get_type_string() -> %s\n", g_variant_get_type_string(value));
     bluez_gatt_characteristic1_set_value(interface, value);
-    g_dbus_method_invocation_return_value(invocation, g_variant_new_tuple(&value, 1));
+    g_print("1.9\n");
+    g_print("2. g_variant_get_type_string() -> %s\n", g_variant_get_type_string(value));
+    if (g_variant_is_floating(value)) {
+        g_print("it's floating\n");
+    } else {
+        g_print("it's sunk\n");
+    }
+    bluez_gatt_characteristic1_complete_read_value(interface, invocation, value);
+    g_print("about to return\n");
+    //g_variant_unref(value);
 
     return TRUE;
 }

@@ -45,10 +45,14 @@
   <interface name="org.bluez.GattCharacteristic1">
     <method name="ReadValue">
       <arg name="options" type="a{sv}" direction="in"/>
-      <arg name="value" type="ay" direction="out"/>
+      <arg name="value" type="ay" direction="out">
+        <annotation name="org.gtk.GDBus.C.ForceGVariant" value="true"/>
+      </arg>
     </method>
     <method name="WriteValue">
-      <arg name="value" type="ay" direction="in"/>
+      <arg name="value" type="ay" direction="in">
+        <annotation name="org.gtk.GDBus.C.ForceGVariant" value="true"/>
+      </arg>
       <arg name="options" type="a{sv}" direction="in"/>
     </method>
     <!-- optional -->
@@ -91,6 +95,7 @@
     <property name="Notifying" type="b" access="read"/>
     -->
     <property name="Flags" type="as" access="read"/>
+    <!--
     <signal name="PropertiesChanged">
       <arg name="interface" type="s"/>
       <arg name="changed_properties" type="a{sv}"/>
@@ -98,6 +103,7 @@
         <annotation name="org.gtk.GDBus.C.ForceGVariant" value="true"/>
       </arg>
     </signal>
+    -->
   </interface>
 
   <interface name="org.bluez.GattDescriptor1">

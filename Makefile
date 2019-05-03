@@ -1,6 +1,7 @@
 REQ_LIBS = glib-2.0 gio-2.0 gio-unix-2.0 gobject-2.0
 
 CFLAGS += -std=c99
+CFLAGS += -Wall
 CFLAGS += `pkg-config --cflags ${REQ_LIBS}`
 
 LDFLAGS += `pkg-config --libs ${REQ_LIBS}`
