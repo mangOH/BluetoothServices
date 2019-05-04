@@ -134,25 +134,11 @@ static void NotifyBatteryLevel(
     BluezGattCharacteristic1 *gattCharacteristicObject,
     guint8 battery_percent)
 {
-    // const gchar *interface_changed = "org.bluez.GattCharacteristic1";
-    // GVariantDict *changed_properties;
-    // g_variant_dict_init(changed_properties, NULL);
-
     guint8 valueArray[] = {battery_percent};
     GVariant *value = g_variant_new_fixed_array(
         G_VARIANT_TYPE_BYTE, valueArray, G_N_ELEMENTS(valueArray), sizeof(valueArray[0]));
-    // g_variant_dict_insert_value(changed_properties, "Value", value);
-
-    // GVariant *invalidated_properties = g_variant_new_array(G_VARIANT_TYPE_STRING, NULL, 0);
 
     bluez_gatt_characteristic1_set_value(gattCharacteristicObject, value);
-    /*
-    bluez_gatt_characteristic1_emit_properties_changed(
-        gattCharacteristicObject,
-        interface_changed,
-        g_variant_dict_end(changed_properties),
-        invalidated_properties);
-    */
 }
 
 static gboolean AdjustBatteryLevel(gpointer user_data)
@@ -214,21 +200,16 @@ static gboolean HandleReadValueForBattLevel(
     guint8 valueArray[] = {ctx->batt_percent};
     GVariant *value = g_variant_new_fixed_array(
         G_VARIANT_TYPE_BYTE, valueArray, G_N_ELEMENTS(valueArray), sizeof(valueArray[0]));
-    //g_variant_ref_sink(value);
-    //g_variant_take_ref(value);
+    /*
+     * It seems that it is necessary to sink the reference because if something else sinks the
+     * reference and then frees it, then the variant might be freed while it is still needed later
+     * in this function.
+     */
+    g_variant_ref_sink(value);
 
-    g_print("1. g_variant_get_type_string() -> %s\n", g_variant_get_type_string(value));
     bluez_gatt_characteristic1_set_value(interface, value);
-    g_print("1.9\n");
-    g_print("2. g_variant_get_type_string() -> %s\n", g_variant_get_type_string(value));
-    if (g_variant_is_floating(value)) {
-        g_print("it's floating\n");
-    } else {
-        g_print("it's sunk\n");
-    }
     bluez_gatt_characteristic1_complete_read_value(interface, invocation, value);
-    g_print("about to return\n");
-    //g_variant_unref(value);
+    g_variant_unref(value);
 
     return TRUE;
 }
@@ -261,21 +242,6 @@ GDBusObjectManagerServer *CreateBSObjectManager(struct BSContext *ctx)
     g_signal_connect(bgc, "handle-stop-notify", G_CALLBACK(HandleStopNotifyForBattLevel), ctx);
     g_dbus_object_skeleton_add_interface(bos, G_DBUS_INTERFACE_SKELETON(bgc));
     ctx->battery_characteristic = bgc;
-    g_dbus_object_manager_server_export(om, G_DBUS_OBJECT_SKELETON(bos));
-    g_object_unref(bos);
-
-
-    bos = g_dbus_object_skeleton_new("/io/mangoh/BatteryService/service0/char0/desc0");
-    BluezGattDescriptor1 *bgd = bluez_gatt_descriptor1_skeleton_new();
-    bluez_gatt_descriptor1_set_uuid(bgd, BLUE_CCCD_UUID);
-    bluez_gatt_descriptor1_set_characteristic(bgd, "/io/mangoh/BatteryService/service0/char0");
-    const gchar *batteryLevelDescriptorFlags[] = {
-        "read",
-        NULL
-    };
-    bluez_gatt_descriptor1_set_flags(bgd, batteryLevelDescriptorFlags);
-    g_dbus_object_skeleton_add_interface(bos, G_DBUS_INTERFACE_SKELETON(bgd));
-    g_object_unref(bgd);
     g_dbus_object_manager_server_export(om, G_DBUS_OBJECT_SKELETON(bos));
     g_object_unref(bos);
 
