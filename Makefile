@@ -6,7 +6,7 @@ CFLAGS += `pkg-config --cflags ${REQ_LIBS}`
 
 LDFLAGS += `pkg-config --libs ${REQ_LIBS}`
 
-fake_bs: main.o bluez_dbus.o freedesktop_dbus.o
+fake_bs: main.o battery_service.o bluez_dbus.o freedesktop_dbus.o
 	$(CC) $(CFLAGS) $(LDFLAGS) -o $@ $^
 
 main.o: main.c bluez_dbus.h freedesktop_dbus.h
