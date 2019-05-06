@@ -8,7 +8,6 @@
 
 // Local
 #include "bluez_dbus.h"
-#include "freedesktop_dbus.h"
 
 #define BLE_BATTERY_SERVICE_UUID "180f"
 #define BLE_BATTERY_LEVEL_CHARACTERISTIC_UUID "2a19"
