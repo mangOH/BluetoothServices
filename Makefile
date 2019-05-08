@@ -3,28 +3,28 @@ REQ_LIBS = glib-2.0 gio-2.0 gio-unix-2.0 gobject-2.0
 CFLAGS += -std=c99
 CFLAGS += -Wall
 CFLAGS += `pkg-config --cflags ${REQ_LIBS}`
-CFLAGS += -IbluezBatteryComponent
+CFLAGS += -IbluetoothServicesComponent
 
 LDFLAGS += `pkg-config --libs ${REQ_LIBS}`
 
-fake_bs: main.o bluezBatteryComponent/battery_service.o bluezBatteryComponent/bluez_dbus.o
+bluetooth_services: main.o bluetoothServicesComponent/primary.o bluetoothServicesComponent/battery_service.o bluetoothServicesComponent/immediate_alert.o bluetoothServicesComponent/bluez_dbus.o
 	$(CC) $(CFLAGS) $(LDFLAGS) -o $@ $^
 
-bluezBatteryComponent/battery_service.o: bluezBatteryComponent/battery_service.c bluezBatteryComponent/bluez_dbus.h
+bluetoothServicesComponent/primary.o: bluetoothServicesComponent/primary.c bluetoothServicesComponent/bluez_dbus.h
 
-# Generated source
-bluezBatteryComponent/bluez_dbus.h: bluezBatteryComponent/org.bluez.xml
-	gdbus-codegen --header --interface-prefix org.bluez. --c-namespace Bluez --output $@ $<
+bluetoothServicesComponent/battery_service.o: bluetoothServicesComponent/battery_service.c bluetoothServicesComponent/bluez_dbus.h
 
-bluezBatteryComponent/bluez_dbus.c: bluezBatteryComponent/org.bluez.xml
-	gdbus-codegen --body --interface-prefix org.bluez. --c-namespace Bluez --output $@ $<
+bluetoothServicesComponent/immediate_alert.o: bluetoothServicesComponent/immediate_alert.c bluetoothServicesComponent/bluez_dbus.h
+
+bluetoothServicesComponent/bluez_dbus.c bluetoothServicesComponent/bluez_dbus.h: bluetoothServicesComponent/org.bluez.xml
+	cd bluetoothServicesComponent && gdbus-codegen --generate-c-code=bluez_dbus --interface-prefix org.bluez. --c-namespace Bluez org.bluez.xml
 
 # Objects based on generated source
-bluezBatteryComponent/bluez_dbus.o: bluezBatteryComponent/bluez_dbus.c bluezBatteryComponent/bluez_dbus.h
-	$(CC) -c $< $(CFLAGS) -o $@
+bluetoothServicesComponent/bluez_dbus.o: bluetoothServicesComponent/bluez_dbus.c bluetoothServicesComponent/bluez_dbus.h
+	$(CC) -c $< $(CFLAGS) $(LDFLAGS) -o $@
 
 clean:
 	$(RM) *.o
-	$(RM) bluezBatteryComponent/*.o
-	$(RM) fake_bs
-	$(RM) bluezBatteryComponent/bluez_dbus.h bluezBatteryComponent/bluez_dbus.c
+	$(RM) bluetoothServicesComponent/*.o
+	$(RM) bluetooth_services
+	$(RM) bluetoothServicesComponent/bluez_dbus.h bluetoothServicesComponent/bluez_dbus.c

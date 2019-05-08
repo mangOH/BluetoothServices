@@ -1,7 +1,7 @@
-#include "battery_service.h"
+#include "primary.h"
 
 int main(int argc, char **argv)
 {
-    bs_init();
+    run_bluetooth_services();
     return 0;
 }
