@@ -12,75 +12,113 @@
 #include "immediate_alert.h"
 #include "bluez_dbus.h"
 
+#define BLUEZ_INTF_ADAPTER "org.bluez.Adapter1"
+#define BLUEZ_INTF_GATT_MANAGER "org.bluez.GattManager1"
+#define BLUEZ_INTF_LE_ADVERTISING_MANAGER "org.bluez.LEAdvertisingManager1"
+
 struct State
 {
     GDBusObjectManagerServer *services_om;
-    GDBusObjectManagerClient *bluez_om;
-    gulong interface_added_handler_id;
-    gulong interface_removed_handler_id;
-    bool application_registered;
 };
 
-static BluezGattManager1 *create_gatt_manager_proxy(GDBusObjectManagerClient *bluez_om, GDBusObject *obj)
+static void advertisement_registered_callback(
+    GObject *source_object, GAsyncResult *res, gpointer user_data)
 {
-    BluezGattManager1 *result = NULL;
-    const gchar *name = g_dbus_object_manager_client_get_name(bluez_om);
-    const gchar *path = g_dbus_object_get_object_path(obj);
-    GDBusConnection *conn = g_dbus_object_manager_client_get_connection(bluez_om);
     GError *error = NULL;
-    result = bluez_gatt_manager1_proxy_new_sync(
-        conn,
+    bluez_leadvertising_manager1_call_register_advertisement_finish(
+        BLUEZ_LEADVERTISING_MANAGER1(source_object), res, &error);
+    if (error != NULL) {
+        g_print("Error registering bluetooth application: %s\n", error->message);
+        exit(1);
+    }
+
+    g_print("Advertising object registered\n");
+}
+
+static void create_and_populate_advertisement(struct State *state)
+{
+    GDBusObjectSkeleton *obj_skel = g_dbus_object_skeleton_new("/io/mangoh/advertisement");
+    BluezLEAdvertisement1 *adv_skel = bluez_leadvertisement1_skeleton_new();
+    // TODO: "broadcast" is also valid.  Not sure which to use.
+    bluez_leadvertisement1_set_type_(adv_skel, "peripheral");
+    bluez_leadvertisement1_set_local_name(adv_skel, "mangOH");
+    // TODO: should this be infinite?  Does 0 mean infinite?
+    bluez_leadvertisement1_set_timeout(adv_skel, 500);
+
+    const gchar* service_uuids[] = {
+        BLE_BATTERY_SERVICE_UUID,
+        IMMEDIATE_ALERT_SERVICE_UUID,
+        NULL,
+    };
+    bluez_leadvertisement1_set_service_uuids(adv_skel, service_uuids);
+
+    /*
+     * Refer to:
+     * https://www.bluetooth.com/wp-content/uploads/Sitecore-Media-Library/Gatt/Xml/Characteristics/org.bluetooth.characteristic.gap.appearance.xml
+     */
+    const guint16 appearance_generic_computer = 128;
+    bluez_leadvertisement1_set_appearance(adv_skel, appearance_generic_computer);
+
+    g_dbus_object_skeleton_add_interface(obj_skel, G_DBUS_INTERFACE_SKELETON(adv_skel));
+    g_object_unref(adv_skel);
+
+    g_dbus_object_manager_server_export(state->services_om, G_DBUS_OBJECT_SKELETON(obj_skel));
+    g_object_unref(obj_skel);
+
+    // Advertisement object is created, now register it with Bluez
+    GError *error = NULL;
+    BluezLEAdvertisingManager1 *adv_manager = bluez_leadvertising_manager1_proxy_new_for_bus_sync(
+        G_BUS_TYPE_SYSTEM,
         G_DBUS_PROXY_FLAGS_NONE,
-        name,
-        path,
+        "org.bluez",
+        "/org/bluez/hci0",
         NULL,
         &error);
     if (error)
-        g_error("Failed to create gatt manager: %s\n", error->message);
+        g_error("Failed to create proxy for LE advertising manager on hci0: %s\n", error->message);
 
-    return result;
+    GVariant *options = g_variant_new_array(G_VARIANT_TYPE("{sv}"), NULL, 0);
+    bluez_leadvertising_manager1_call_register_advertisement(
+        adv_manager, "/io/mangoh/advertisement", options, NULL, advertisement_registered_callback, NULL);
+
+    g_object_unref(adv_manager);
+    g_print("Registered advertising object\n");
 }
 
-static BluezGattManager1 *search_for_gatt_manager1_interface(GDBusObjectManagerClient *bluez_om)
-{
-    BluezGattManager1 *result = NULL;
-    GList *objIt = g_dbus_object_manager_get_objects(
-        G_DBUS_OBJECT_MANAGER(bluez_om));
-    while (objIt != NULL) {
-        GDBusObject *obj = objIt->data;
-
-        if (result == NULL) {
-            GDBusInterface *gattManager1Interface =
-                g_dbus_object_get_interface(obj, "org.bluez.GattManager1");
-            if (gattManager1Interface != NULL) {
-                result = create_gatt_manager_proxy(bluez_om, obj);
-            }
-        }
-
-        g_object_unref(obj);
-        objIt = objIt->next;
-    }
-    g_list_free(objIt);
-
-    return result;
-}
 
 static void application_registered_callback(
     GObject *source_object, GAsyncResult *res, gpointer user_data)
 {
-    // struct State *state = user_data;
+    struct State *state = user_data;
     GError *error = NULL;
     bluez_gatt_manager1_call_register_application_finish(
         BLUEZ_GATT_MANAGER1(source_object), res, &error);
     if (error != NULL) {
-        g_print("Error registering BS application: %s\n", error->message);
+        g_print("Error registering bluetooth application: %s\n", error->message);
         exit(1);
     }
-    g_print("Registered BS application\n");
+    g_print("Registered bluetooth application\n");
+
+    create_and_populate_advertisement(state);
 }
 
-static void register_application(BluezGattManager1 *gatt_manager, struct State *state)
+static void handle_bus_acquired(GDBusConnection *conn, const gchar *name, gpointer user_data)
 {
+    g_print("bus acquired\n");
+    struct State *state = user_data;
+    GError *error = NULL;
+
+    g_dbus_object_manager_server_set_connection(state->services_om, conn);
+    BluezGattManager1 *gatt_manager = bluez_gatt_manager1_proxy_new_for_bus_sync(
+        G_BUS_TYPE_SYSTEM,
+        G_DBUS_PROXY_FLAGS_NONE,
+        "org.bluez",
+        "/org/bluez/hci0",
+        NULL,
+        &error);
+    if (error)
+        g_error("Failed to create proxy for GATT manager on hci0: %s\n", error->message);
+
     GVariantBuilder *options_builder = g_variant_builder_new(G_VARIANT_TYPE("a{sv}"));
     GVariant *options = g_variant_builder_end(options_builder);
     g_variant_builder_unref(options_builder);
@@ -91,21 +129,8 @@ static void register_application(BluezGattManager1 *gatt_manager, struct State *
         NULL,
         application_registered_callback,
         state);
-    state->application_registered = true;
-}
 
-static void handle_bus_acquired(GDBusConnection *conn, const gchar *name, gpointer user_data)
-{
-    g_print("bus acquired\n");
-    struct State *state = user_data;
-
-    g_dbus_object_manager_server_set_connection(state->services_om, conn);
-    BluezGattManager1 *gatt_manager = search_for_gatt_manager1_interface(state->bluez_om);
-    if (gatt_manager != NULL)
-    {
-        register_application(gatt_manager, state);
-        g_object_unref(gatt_manager);
-    }
+    g_object_unref(gatt_manager);
 }
 
 static void handle_name_acquired(
@@ -120,47 +145,23 @@ static void handle_name_lost(
     g_print("name lost: %s\n", name);
 }
 
-static void bluez_interface_added_handler(
-    GDBusObjectManager *manager,
-    GDBusObject *object,
-    GDBusInterface *interface,
-    gpointer context)
+static void initialize_adapter(void)
 {
-    struct State *state = context;
-    if (!state->application_registered)
-    {
-        GDBusProxy *interface_proxy = G_DBUS_PROXY(interface);
-        const gchar *interface_name = g_dbus_proxy_get_interface_name(interface_proxy);
-        g_print("signal interface-added for interface %s\n", interface_name);
-        if (g_strcmp0(interface_name, "org.bluez.GattManager1") == 0) {
-            BluezGattManager1 *gatt_manager = create_gatt_manager_proxy(
-                G_DBUS_OBJECT_MANAGER_CLIENT(manager), object);
-            register_application(gatt_manager, state);
-            g_object_unref(gatt_manager);
-        }
-    }
+    GError *error = NULL;
+    BluezAdapter1 *adapter = bluez_adapter1_proxy_new_for_bus_sync(
+        G_BUS_TYPE_SYSTEM,
+        G_DBUS_PROXY_FLAGS_NONE,
+        "org.bluez",
+        "/org/bluez/hci0",
+        NULL,
+        &error);
+    if (error)
+        g_error("Failed to create proxy for hci0 adapter: %s\n", error->message);
+
+    bluez_adapter1_set_powered(adapter, TRUE);
+    g_object_unref(adapter);
 }
 
-static void bluez_interface_removed_handler(
-    GDBusObjectManager *manager,
-    GDBusObject *object,
-    GDBusInterface *interface,
-    gpointer context)
-{
-    // struct State *state = context;
-    GDBusProxy *interface_proxy = G_DBUS_PROXY(interface);
-    const gchar *interface_name = g_dbus_proxy_get_interface_name(interface_proxy);
-    g_print("signal interface-removed for interface %s\n", interface_name);
-    if (g_strcmp0(interface_name, "org.bluez.GattManager1") == 0) {
-        /*
-         * TODO: In the case that a GattManager1 interface is removed, I think we need to check and
-         * see if it is *the* interface that the application was registered on. If it is, then I
-         * think the application needs to be deactivated and reset so that it is waiting for a
-         * GattManager1 interface to be added again.
-         */
-        // state->application_registered = false;
-    }
-}
 
 void run_bluetooth_services(void)
 {
@@ -171,32 +172,7 @@ void run_bluetooth_services(void)
     battery_register_services(state->services_om, &num_services_registered);
     alert_register_services(state->services_om, &num_services_registered);
 
-    GError *error = NULL;
-    GDBusObjectManager *bluez_om = g_dbus_object_manager_client_new_for_bus_sync(
-        G_BUS_TYPE_SYSTEM,
-        G_DBUS_OBJECT_MANAGER_CLIENT_FLAGS_NONE,
-        "org.bluez",
-        "/",
-        NULL,
-        NULL,
-        NULL,
-        NULL,
-        &error);
-    if (error != NULL) {
-        g_print("Error creating bluez object manager client: %s\n", error->message);
-        exit(1);
-    }
-    state->bluez_om = G_DBUS_OBJECT_MANAGER_CLIENT(bluez_om);
-    state->interface_added_handler_id = g_signal_connect(
-        bluez_om,
-        "interface-added",
-        G_CALLBACK(bluez_interface_added_handler),
-        state);
-    state->interface_removed_handler_id = g_signal_connect(
-        bluez_om,
-        "interface-removed",
-        G_CALLBACK(bluez_interface_removed_handler),
-        state);
+    initialize_adapter();
 
     guint id = g_bus_own_name(
         G_BUS_TYPE_SYSTEM,
@@ -213,3 +189,4 @@ void run_bluetooth_services(void)
 
     g_bus_unown_name(id);
 }
+

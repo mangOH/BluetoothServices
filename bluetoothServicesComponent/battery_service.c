@@ -9,8 +9,8 @@
 
 // Local
 #include "bluez_dbus.h"
+#include "battery_service.h"
 
-#define BLE_BATTERY_SERVICE_UUID "180f"
 #define BLE_BATTERY_LEVEL_CHARACTERISTIC_UUID "2a19"
 #define BLUE_CCCD_UUID "2902"
 

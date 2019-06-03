@@ -8,7 +8,7 @@ CFLAGS += -IbluetoothServicesComponent
 LDFLAGS += `pkg-config --libs ${REQ_LIBS}`
 
 bluetooth_services: main.o bluetoothServicesComponent/primary.o bluetoothServicesComponent/battery_service.o bluetoothServicesComponent/immediate_alert.o bluetoothServicesComponent/bluez_dbus.o
-	$(CC) $(CFLAGS) $(LDFLAGS) -o $@ $^
+	$(CC) -o $@ $^ $(LDFLAGS)
 
 bluetoothServicesComponent/primary.o: bluetoothServicesComponent/primary.c bluetoothServicesComponent/bluez_dbus.h
 
@@ -21,7 +21,7 @@ bluetoothServicesComponent/bluez_dbus.c bluetoothServicesComponent/bluez_dbus.h:
 
 # Objects based on generated source
 bluetoothServicesComponent/bluez_dbus.o: bluetoothServicesComponent/bluez_dbus.c bluetoothServicesComponent/bluez_dbus.h
-	$(CC) -c $< $(CFLAGS) $(LDFLAGS) -o $@
+	$(CC) -c $< $(CFLAGS) -o $@
 
 clean:
 	$(RM) *.o

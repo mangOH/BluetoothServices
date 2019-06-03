@@ -9,8 +9,8 @@
 
 // Local
 #include "bluez_dbus.h"
+#include "immediate_alert.h"
 
-#define IMMEDIATE_ALERT_SERVICE_UUID "1802"
 #define ALERT_LEVEL_CHARACTERISTIC_UUID "2a06"
 
 
