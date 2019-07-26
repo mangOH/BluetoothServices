@@ -1,0 +1,22 @@
+sandboxed: false
+start: manual
+
+executables:
+{
+    bluetoothServices = ( bluetoothServicesComponent )
+}
+
+processes:
+{
+    run:
+    {
+        bluetoothServices = ( bluetoothServices )
+    }
+
+    faultAction: stopApp
+
+    envVars:
+    {
+        LE_LOG_LEVEL = DEBUG
+    }
+}
