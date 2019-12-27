@@ -31,4 +31,10 @@ requires:
     {
         bluezDBus
     }
+
+    api:
+    {
+        dhubIO = io.api [types-only]
+        dhubAdmin = admin.api
+    }
 }

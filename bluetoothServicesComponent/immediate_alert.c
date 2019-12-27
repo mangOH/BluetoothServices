@@ -7,6 +7,10 @@
 #include <glib.h>
 #include <gio/gio.h>
 
+// Legato
+#include "legato.h"
+#include "interfaces.h"
+
 // Local
 #include "immediate_alert.h"
 #include "org.bluez.GattCharacteristic1.h"
@@ -14,10 +18,41 @@
 
 #define ALERT_LEVEL_CHARACTERISTIC_UUID "2a06"
 
+/*
+ * Note that these values are chosen to match the immediate alert service specification, so don't
+ * change them.
+ */
+enum AlertLevel
+{
+    ALERT_LEVEL_NONE = 0,
+    ALERT_LEVEL_MILD = 1,
+    ALERT_LEVEL_HIGH = 2,
+};
 
-#define NO_ALERT 0
-#define MILD_ALERT 1
-#define HIGH_ALERT 2
+static void set_alert_level(enum AlertLevel alert_level)
+{
+    LE_DEBUG("Processing request to set alert_level to %d (0=none, 1=mild, 2=high)", alert_level);
+
+    switch (alert_level)
+    {
+    case ALERT_LEVEL_NONE:
+        dhubAdmin_PushBoolean("/app/leds/mono/enable", IO_NOW, false);
+        dhubAdmin_PushBoolean("/app/buzzer/enable", IO_NOW, false);
+        break;
+
+    case ALERT_LEVEL_MILD:
+        dhubAdmin_PushBoolean("/app/leds/mono/enable", IO_NOW, true);
+        dhubAdmin_PushBoolean("/app/buzzer/enable", IO_NOW, false);
+        break;
+
+    case ALERT_LEVEL_HIGH:
+        dhubAdmin_PushBoolean("/app/leds/mono/enable", IO_NOW, true);
+        dhubAdmin_PushNumeric("/app/buzzer/period", IO_NOW, 1.0);
+        dhubAdmin_PushNumeric("/app/buzzer/percent", IO_NOW, 50);
+        dhubAdmin_PushBoolean("/app/buzzer/enable", IO_NOW, true);
+        break;
+    }
+}
 
 static gboolean handle_write_value(
     BluezGattCharacteristic1 *interface,
@@ -44,20 +79,7 @@ static gboolean handle_write_value(
     }
 
     const guint8 alert_level = value_array[0];
-
-    switch (alert_level) {
-    case NO_ALERT:
-        g_print("Received request for no alert\n");
-        break;
-
-    case MILD_ALERT:
-        g_print("Received request for mild alert\n");
-        break;
-
-    case HIGH_ALERT:
-        g_print("Received request for high alert\n");
-        break;
-    }
+    set_alert_level((enum AlertLevel)alert_level);
 
 done:
     bluez_gatt_characteristic1_complete_write_value(interface, invocation);

@@ -20,3 +20,8 @@ processes:
         LE_LOG_LEVEL = DEBUG
     }
 }
+
+bindings:
+{
+    bluetoothServices.bluetoothServicesComponent.dhubAdmin -> dataHub.admin
+}
