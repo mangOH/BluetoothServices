@@ -106,7 +106,9 @@ static gboolean handle_read_value(
     return TRUE;
 }
 
-void battery_register_services(GDBusObjectManagerServer *services_om, size_t *num_services_registered)
+void battery_register_services(
+    GDBusObjectManagerServer *services_om,
+    size_t *num_services_registered)
 {
     struct BSContext2 *ctx = g_malloc0(sizeof(*ctx));
     ctx->batt_percent = 50;

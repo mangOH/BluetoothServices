@@ -126,7 +126,8 @@ static void CreateAdvertisementObject(struct State *state)
     g_dbus_object_skeleton_add_interface(obj_skel, G_DBUS_INTERFACE_SKELETON(adv_skel));
     g_object_unref(adv_skel);
 
-    g_dbus_object_manager_server_export(state->servicesObjectManager, G_DBUS_OBJECT_SKELETON(obj_skel));
+    g_dbus_object_manager_server_export(
+        state->servicesObjectManager, G_DBUS_OBJECT_SKELETON(obj_skel));
     g_object_unref(obj_skel);
 }
 
@@ -227,7 +228,8 @@ static void AdapterPropertiesChangedHandler(
     struct State *state = userData;
     if (state->bluezState == BLUEZ_STATE_POWERING_ON_ADAPTER)
     {
-        GVariant *poweredVal = g_variant_lookup_value(changedProperties, "Powered", G_VARIANT_TYPE_BOOLEAN);
+        GVariant *poweredVal =
+            g_variant_lookup_value(changedProperties, "Powered", G_VARIANT_TYPE_BOOLEAN);
         if (poweredVal != NULL)
         {
             gboolean powered = g_variant_get_boolean(poweredVal);
@@ -248,7 +250,11 @@ static void AdapterFoundHandler(struct State *state)
     {
         state->bluezState = BLUEZ_STATE_POWERING_ON_ADAPTER;
         LE_DEBUG("Adapter not powered - powering on");
-        g_signal_connect(state->adapter, "g-properties-changed", G_CALLBACK(AdapterPropertiesChangedHandler), state);
+        g_signal_connect(
+            state->adapter,
+            "g-properties-changed",
+            G_CALLBACK(AdapterPropertiesChangedHandler),
+            state);
         bluez_adapter1_set_powered(state->adapter, TRUE);
     }
     else
@@ -281,7 +287,8 @@ static void BluezObjectAddedHandler
     gpointer userData
 )
 {
-    LE_DEBUG("Received \"object-added\" signal - object_path=%s", g_dbus_object_get_object_path(object));
+    LE_DEBUG(
+        "Received \"object-added\" signal - object_path=%s", g_dbus_object_get_object_path(object));
     struct State *state = userData;
 
     if (state->bluezState == BLUEZ_STATE_SEARCHING_FOR_ADAPTER)
@@ -301,7 +308,9 @@ static void BluezObjectRemovedHandler
     gpointer userData
 )
 {
-    LE_DEBUG("Received \"object-removed\" signal - object_path=%s", g_dbus_object_get_object_path(object));
+    LE_DEBUG(
+        "Received \"object-removed\" signal - object_path=%s",
+        g_dbus_object_get_object_path(object));
 }
 
 
@@ -328,7 +337,10 @@ static void MangohNameLostCallback(
     LE_DEBUG("io.mangoh name lost: %s", name);
 }
 
-static void BluezObjectManagerCreateCallback(GObject *sourceObject, GAsyncResult *res, gpointer userData)
+static void BluezObjectManagerCreateCallback(
+    GObject *sourceObject,
+    GAsyncResult *res,
+    gpointer userData)
 {
     GError *error = NULL;
     struct State *state = userData;
@@ -341,8 +353,13 @@ static void BluezObjectManagerCreateCallback(GObject *sourceObject, GAsyncResult
     else
     {
         state->bluezState = BLUEZ_STATE_SEARCHING_FOR_ADAPTER;
-        g_signal_connect(state->bluezObjectManager, "object-added", G_CALLBACK(BluezObjectAddedHandler), state);
-        g_signal_connect(state->bluezObjectManager, "object-removed", G_CALLBACK(BluezObjectRemovedHandler), state);
+        g_signal_connect(
+            state->bluezObjectManager, "object-added", G_CALLBACK(BluezObjectAddedHandler), state);
+        g_signal_connect(
+            state->bluezObjectManager,
+            "object-removed",
+            G_CALLBACK(BluezObjectRemovedHandler),
+            state);
 
         SearchForAdapter(state);
     }
@@ -354,8 +371,16 @@ static void TryCreateBluezObjectManager(struct State *state)
     if (state->bluezState == BLUEZ_STATE_CREATING_OBJECT_MANAGER)
     {
         g_dbus_object_manager_client_new_for_bus(
-            G_BUS_TYPE_SYSTEM, G_DBUS_OBJECT_MANAGER_CLIENT_FLAGS_NONE, "org.bluez", "/", BluezProxyTypeFunc, NULL,
-            NULL, NULL, BluezObjectManagerCreateCallback, state);
+            G_BUS_TYPE_SYSTEM,
+            G_DBUS_OBJECT_MANAGER_CLIENT_FLAGS_NONE,
+            "org.bluez",
+            "/",
+            BluezProxyTypeFunc,
+            NULL,
+            NULL,
+            NULL,
+            BluezObjectManagerCreateCallback,
+            state);
     }
     else
     {

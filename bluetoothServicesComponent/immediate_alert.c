@@ -29,7 +29,10 @@ static gboolean handle_write_value(
     // TODO: check options
 
     if (!g_variant_is_of_type(value, G_VARIANT_TYPE_BYTESTRING)) {
-        g_print("%s received value of unexpected type: \"%s\"\n", __func__, g_variant_get_type_string(value));
+        g_print(
+            "%s received value of unexpected type: \"%s\"\n",
+            __func__,
+            g_variant_get_type_string(value));
         goto done;
     }
 
@@ -62,9 +65,12 @@ done:
     return TRUE;
 }
 
-void alert_register_services(GDBusObjectManagerServer *services_om, size_t *num_services_registered)
+void alert_register_services(
+    GDBusObjectManagerServer *services_om,
+    size_t *num_services_registered)
 {
-    const gchar *om_path = g_dbus_object_manager_get_object_path(G_DBUS_OBJECT_MANAGER(services_om));
+    const gchar *om_path =
+        g_dbus_object_manager_get_object_path(G_DBUS_OBJECT_MANAGER(services_om));
 
     gchar *service_path = g_strdup_printf("%s/service%zu", om_path, *num_services_registered);
     GDBusObjectSkeleton *service_object = g_dbus_object_skeleton_new(service_path);
@@ -74,7 +80,8 @@ void alert_register_services(GDBusObjectManagerServer *services_om, size_t *num_
     //g_print("About to set includes for immediate alert service\n");
     ////const gchar *const includes[] = { NULL };
     //bluez_gatt_service1_set_includes(service_interface, NULL);
-    g_dbus_object_skeleton_add_interface(service_object, G_DBUS_INTERFACE_SKELETON(service_interface));
+    g_dbus_object_skeleton_add_interface(
+        service_object, G_DBUS_INTERFACE_SKELETON(service_interface));
     g_object_unref(service_interface);
     g_dbus_object_manager_server_export(services_om, service_object);
     g_object_unref(service_object);
@@ -89,8 +96,10 @@ void alert_register_services(GDBusObjectManagerServer *services_om, size_t *num_
     };
     bluez_gatt_characteristic1_set_flags(characteristic_interface, characteristic_flags);
     bluez_gatt_characteristic1_set_service(characteristic_interface, service_path);
-    g_signal_connect(characteristic_interface, "handle-write-value", G_CALLBACK(handle_write_value), NULL);
-    g_dbus_object_skeleton_add_interface(characteristic_object, G_DBUS_INTERFACE_SKELETON(characteristic_interface));
+    g_signal_connect(
+        characteristic_interface, "handle-write-value", G_CALLBACK(handle_write_value), NULL);
+    g_dbus_object_skeleton_add_interface(
+        characteristic_object, G_DBUS_INTERFACE_SKELETON(characteristic_interface));
     g_object_unref(characteristic_interface);
     g_dbus_object_manager_server_export(services_om, characteristic_object);
     g_object_unref(characteristic_object);
