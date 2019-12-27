@@ -1,4 +1,0 @@
-bluetooth_services
-bluetoothServicesComponent/bluez_dbus.c
-bluetoothServicesComponent/bluez_dbus.h
-*.o
