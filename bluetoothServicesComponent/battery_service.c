@@ -7,6 +7,10 @@
 #include <glib.h>
 #include <gio/gio.h>
 
+// Legato
+#include "legato.h"
+#include "interfaces.h"
+
 // Local
 #include "battery_service.h"
 #include "org.bluez.GattCharacteristic1.h"
@@ -15,8 +19,7 @@
 #define BLE_BATTERY_LEVEL_CHARACTERISTIC_UUID "2a19"
 #define BLUE_CCCD_UUID "2902"
 
-struct BSContext2 {
-    // TODO: This goes away when connected to a real battery
+struct BSContext {
     guint8 batt_percent;
     gint8 batt_delta;
     bool notifying;
@@ -34,31 +37,12 @@ static void notify_battery_level(
     bluez_gatt_characteristic1_set_value(gatt_characteristic_object, value);
 }
 
-static gboolean adjust_battery_level(gpointer user_data)
-{
-    struct BSContext2 *ctx = user_data;
-    if (ctx->batt_percent == 0 && ctx->batt_delta == -1)
-        ctx->batt_delta = 1;
-    else if (ctx->batt_percent == 100 && ctx->batt_delta == 1)
-        ctx->batt_delta = -1;
-
-    ctx->batt_percent = ctx->batt_percent + ctx->batt_delta;
-
-    g_print("Adjusted battery level to %u\n", ctx->batt_percent);
-
-    if (ctx->notifying) {
-        notify_battery_level(ctx->battery_characteristic, ctx->batt_percent);
-    }
-
-    return TRUE;
-}
-
 static gboolean handle_start_notify(
     BluezGattCharacteristic1 *interface,
     GDBusMethodInvocation *invocation,
     gpointer user_data)
 {
-    struct BSContext2 *ctx = user_data;
+    struct BSContext *ctx = user_data;
     if (!ctx->notifying)
     {
         ctx->notifying = true;
@@ -74,7 +58,7 @@ static gboolean handle_stop_notify(
     GDBusMethodInvocation *invocation,
     gpointer user_data)
 {
-    struct BSContext2 *ctx = user_data;
+    struct BSContext *ctx = user_data;
     ctx->notifying = false;
 
     bluez_gatt_characteristic1_complete_stop_notify(interface, invocation);
@@ -87,7 +71,7 @@ static gboolean handle_read_value(
     GVariant *options,
     gpointer user_data)
 {
-    struct BSContext2 *ctx = user_data;
+    struct BSContext *ctx = user_data;
     g_print("%s called\n", __func__);
     guint8 valueArray[] = {ctx->batt_percent};
     GVariant *value = g_variant_new_fixed_array(
@@ -106,13 +90,27 @@ static gboolean handle_read_value(
     return TRUE;
 }
 
+static void BatteryPercentPushHandler(double timestamp, double percent, void *context)
+{
+    LE_INFO("BatteryPercentPushHandler called: %f", percent);
+    struct BSContext *ctx = context;
+    if (percent < 0.0 || percent > 100.0)
+    {
+        LE_ERROR("Invalid battery percentage received: %f", percent);
+        return;
+    }
+    ctx->batt_percent = (guint8)round(percent);
+    if (ctx->notifying) {
+        notify_battery_level(ctx->battery_characteristic, ctx->batt_percent);
+    }
+}
+
 void battery_register_services(
     GDBusObjectManagerServer *services_om,
     size_t *num_services_registered)
 {
-    struct BSContext2 *ctx = g_malloc0(sizeof(*ctx));
+    struct BSContext *ctx = g_malloc0(sizeof(*ctx));
     ctx->batt_percent = 50;
-    ctx->batt_delta = -1;
     const gchar *om_path =
         g_dbus_object_manager_get_object_path(G_DBUS_OBJECT_MANAGER(services_om));
 
@@ -150,5 +148,10 @@ void battery_register_services(
 
     *num_services_registered += 1;
 
-    g_timeout_add(10000, adjust_battery_level, ctx);
+    LE_ASSERT_OK(dhubAdmin_CreateObs("battery/percent"));
+    LE_ASSERT_OK(dhubAdmin_SetSource("/obs/battery/percent", "/app/battery/value"));
+    dhubAdmin_SetJsonExtraction("/obs/battery/percent", "percent");
+    dhubAdmin_AddNumericPushHandler("/obs/battery/percent", BatteryPercentPushHandler, ctx);
+    dhubAdmin_PushNumeric("/app/battery/period", IO_NOW, 30.0);
+    dhubAdmin_PushBoolean("/app/battery/enable", IO_NOW, true);
 }
