@@ -99,9 +99,6 @@ void alert_register_services(
     BluezGattService1 *service_interface = bluez_gatt_service1_skeleton_new();
     bluez_gatt_service1_set_uuid(service_interface, IMMEDIATE_ALERT_SERVICE_UUID);
     bluez_gatt_service1_set_primary(service_interface, TRUE);
-    //g_print("About to set includes for immediate alert service\n");
-    ////const gchar *const includes[] = { NULL };
-    //bluez_gatt_service1_set_includes(service_interface, NULL);
     g_dbus_object_skeleton_add_interface(
         service_object, G_DBUS_INTERFACE_SKELETON(service_interface));
     g_object_unref(service_interface);

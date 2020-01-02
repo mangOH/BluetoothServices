@@ -121,9 +121,6 @@ void battery_register_services(
     BluezGattService1 *bgs = bluez_gatt_service1_skeleton_new();
     bluez_gatt_service1_set_uuid(bgs, BLE_BATTERY_SERVICE_UUID);
     bluez_gatt_service1_set_primary(bgs, TRUE);
-    //g_print("About to set includes for battery service\n");
-    ////const gchar *const includes[] = { NULL };
-    //bluez_gatt_service1_set_includes(bgs, NULL);
     g_dbus_object_skeleton_add_interface(bos, G_DBUS_INTERFACE_SKELETON(bgs));
     g_object_unref(bgs);
     g_dbus_object_manager_server_export(services_om, G_DBUS_OBJECT_SKELETON(bos));
