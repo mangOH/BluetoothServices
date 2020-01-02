@@ -1,5 +1,5 @@
 sandboxed: false
-start: manual
+start: auto
 
 executables:
 {
@@ -15,10 +15,12 @@ processes:
 
     faultAction: stopApp
 
+    /*
     envVars:
     {
         LE_LOG_LEVEL = DEBUG
     }
+    */
 }
 
 bindings:
