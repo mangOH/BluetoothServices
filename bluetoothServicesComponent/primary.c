@@ -103,11 +103,10 @@ static void CreateAdvertisementObject(struct State *state)
 {
     GDBusObjectSkeleton *obj_skel = g_dbus_object_skeleton_new("/io/mangoh/advertisement");
     BluezLEAdvertisement1 *adv_skel = bluez_leadvertisement1_skeleton_new();
-    // TODO: "broadcast" is also valid.  Not sure which to use.
     bluez_leadvertisement1_set_type_(adv_skel, "peripheral");
     bluez_leadvertisement1_set_local_name(adv_skel, "mangOH");
-    // TODO: should this be infinite?  Does 0 mean infinite?
-    bluez_leadvertisement1_set_timeout(adv_skel, 500);
+    const uint16_t no_timeout = 0; // Never timeout
+    bluez_leadvertisement1_set_timeout(adv_skel, no_timeout);
 
     const gchar* service_uuids[] = {
         BLE_BATTERY_SERVICE_UUID,
