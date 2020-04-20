@@ -3,6 +3,7 @@ sources:
     component.c
     primary.c
     battery_service.c
+    modem_info_service.c
     immediate_alert.c
 }
 
@@ -36,5 +37,6 @@ requires:
     {
         dhubIO = io.api [types-only]
         dhubAdmin = admin.api
+        modemServices/le_info.api
     }
 }

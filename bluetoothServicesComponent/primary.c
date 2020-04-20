@@ -13,6 +13,7 @@
 
 // Local
 #include "battery_service.h"
+#include "modem_info_service.h"
 #include "immediate_alert.h"
 #include "org.bluez.Adapter1.h"
 #include "org.bluez.Device1.h"
@@ -435,6 +436,7 @@ void InitializeBluetoothServices(void)
     state->servicesObjectManager = g_dbus_object_manager_server_new("/io/mangoh");
 
     battery_register_services(state->servicesObjectManager, &numServicesRegistered);
+    modem_info_register_services(state->servicesObjectManager, &numServicesRegistered);
     alert_register_services(state->servicesObjectManager, &numServicesRegistered);
     CreateAdvertisementObject(state);
     state->servicesState = SERVICES_STATE_DEFINED_IN_OM;

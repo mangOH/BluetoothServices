@@ -26,4 +26,5 @@ processes:
 bindings:
 {
     bluetoothServices.bluetoothServicesComponent.dhubAdmin -> dataHub.admin
+    bluetoothServices.bluetoothServicesComponent.le_info -> modemService.le_info
 }
