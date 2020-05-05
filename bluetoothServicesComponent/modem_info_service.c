@@ -15,19 +15,11 @@
 #include "modem_info_service.h"
 #include "org.bluez.GattCharacteristic1.h"
 #include "org.bluez.GattService1.h"
+#include "org.bluez.GattDescriptor1.h"
 
 #define MODEM_INFO_FSN_CHARACTERISTIC_UUID "2A25"
-#define MODEM_INFO_IMEI_CHARACTERISTIC_UUID "2A27"
-
-struct FSNContext {
-    gchar fsn[32];
-    BluezGattCharacteristic1 *bt_characteristic;
-};
-
-struct IMEIContext {
-    gchar imei[32];
-    BluezGattCharacteristic1 *bt_characteristic;
-};
+#define MODEM_INFO_IMEI_CHARACTERISTIC_UUID "865d"
+#define CHARACTERISTIC_PRESENTATION_FORMAT_UUID "2904"
 
 static gboolean handle_read_fsn_value(
     BluezGattCharacteristic1 *interface,
@@ -35,11 +27,10 @@ static gboolean handle_read_fsn_value(
     GVariant *options,
     gpointer user_data)
 {
-    struct FSNContext *ctx = user_data;
-    memset(ctx->fsn, 0, 32);
-    le_info_GetPlatformSerialNumber(ctx->fsn, 32);
-    g_print("%s called with FSN: %s\n", __func__, ctx->fsn);
-    GVariant *value = g_variant_new_bytestring((const gchar *)ctx->fsn);
+    gchar fsn[32];
+    le_info_GetPlatformSerialNumber(fsn, 32);
+    g_print("%s called with FSN: %s\n", __func__, fsn);
+    GVariant *value = g_variant_new_bytestring((const gchar *)fsn);
     g_variant_ref_sink(value);
     bluez_gatt_characteristic1_set_value(interface, value);
     bluez_gatt_characteristic1_complete_read_value(interface, invocation, value);
@@ -47,7 +38,6 @@ static gboolean handle_read_fsn_value(
 
     return TRUE;
 }
-/* FSN */
 
 static gboolean handle_read_imei_value(
     BluezGattCharacteristic1 *interface,
@@ -55,11 +45,10 @@ static gboolean handle_read_imei_value(
     GVariant *options,
     gpointer user_data)
 {
-    struct IMEIContext *ctx = user_data;
-    // memset(ctx->imei, 0, 32);
-    le_info_GetImei(ctx->imei, 32);
-    g_print("%s called with IMEI: %s\n", __func__, ctx->imei);
-    GVariant *value = g_variant_new_bytestring ((const gchar *)ctx->imei);
+    gchar imei[32];
+    le_info_GetImei(imei, 32);
+    g_print("%s called with IMEI: %s\n", __func__, imei);
+    GVariant *value = g_variant_new_bytestring ((const gchar *)imei);
     g_variant_ref_sink(value);
     bluez_gatt_characteristic1_set_value(interface, value);
     bluez_gatt_characteristic1_complete_read_value(interface, invocation, value);
@@ -67,7 +56,26 @@ static gboolean handle_read_imei_value(
 
     return TRUE;
 }
-/* IMEI */
+
+static gboolean handle_read_cpf_value(
+    BluezGattCharacteristic1 *interface,
+    GDBusMethodInvocation *invocation,
+    GVariant *options,
+    gpointer user_data)
+{
+    guint8 custom_format[] = {25, 1, 0x00, 0x27, 1, 0x00, 0x00};
+    g_print("%s called\n", __func__);
+
+    GVariant *value = g_variant_new_fixed_array(
+        G_VARIANT_TYPE_BYTE, custom_format, G_N_ELEMENTS(custom_format), sizeof(custom_format[0]));
+    g_variant_ref_sink(value);
+    bluez_gatt_characteristic1_set_value(interface, value);
+    bluez_gatt_characteristic1_complete_read_value(interface, invocation, value);
+    g_variant_unref(value);
+
+    return TRUE;
+}
+
 
 void modem_info_register_services(
     GDBusObjectManagerServer *services_om,
@@ -90,7 +98,6 @@ void modem_info_register_services(
     gchar *fsn_characteristic_path = g_strconcat(service_path, "/fsn", NULL);
     bos = g_dbus_object_skeleton_new(fsn_characteristic_path);
 
-    struct FSNContext *fsnctx = g_malloc0(sizeof(*fsnctx));
     BluezGattCharacteristic1 *bgc = bluez_gatt_characteristic1_skeleton_new();
     bluez_gatt_characteristic1_set_uuid(bgc, MODEM_INFO_FSN_CHARACTERISTIC_UUID);
     const gchar *modem_info_fsn_CharacteristicFlags[] = {
@@ -99,9 +106,8 @@ void modem_info_register_services(
     };
     bluez_gatt_characteristic1_set_flags(bgc, modem_info_fsn_CharacteristicFlags);
     bluez_gatt_characteristic1_set_service(bgc, service_path);
-    g_signal_connect(bgc, "handle-read-value", G_CALLBACK(handle_read_fsn_value), fsnctx);
+    g_signal_connect(bgc, "handle-read-value", G_CALLBACK(handle_read_fsn_value), NULL);
     g_dbus_object_skeleton_add_interface(bos, G_DBUS_INTERFACE_SKELETON(bgc));
-    fsnctx->bt_characteristic = bgc;
     g_dbus_object_manager_server_export(services_om, G_DBUS_OBJECT_SKELETON(bos));
     g_object_unref(bos);
 
@@ -109,7 +115,6 @@ void modem_info_register_services(
     gchar *imei_characteristic_path = g_strconcat(service_path, "/imei", NULL);
     bos = g_dbus_object_skeleton_new(imei_characteristic_path);
 
-    struct IMEIContext *imeictx = g_malloc0(sizeof(*imeictx));
     bgc = bluez_gatt_characteristic1_skeleton_new();
     bluez_gatt_characteristic1_set_uuid(bgc, MODEM_INFO_IMEI_CHARACTERISTIC_UUID);
     const gchar *modem_info_imei_CharacteristicFlags[] = {
@@ -118,12 +123,29 @@ void modem_info_register_services(
     };
     bluez_gatt_characteristic1_set_flags(bgc, modem_info_imei_CharacteristicFlags);
     bluez_gatt_characteristic1_set_service(bgc, service_path);
-    g_signal_connect(bgc, "handle-read-value", G_CALLBACK(handle_read_imei_value), imeictx);
+    g_signal_connect(bgc, "handle-read-value", G_CALLBACK(handle_read_imei_value), NULL);
     g_dbus_object_skeleton_add_interface(bos, G_DBUS_INTERFACE_SKELETON(bgc));
-    imeictx->bt_characteristic = bgc;
     g_dbus_object_manager_server_export(services_om, G_DBUS_OBJECT_SKELETON(bos));
     g_object_unref(bos);
 
+    // Characteristic Presentation Format
+    gchar *cpf_characteristic_path = g_strconcat(imei_characteristic_path, "/imei_cpf", NULL);
+    bos = g_dbus_object_skeleton_new(cpf_characteristic_path);
+
+    BluezGattDescriptor1 *bgd = bluez_gatt_descriptor1_skeleton_new();
+    bluez_gatt_descriptor1_set_uuid(bgd, CHARACTERISTIC_PRESENTATION_FORMAT_UUID);
+    const gchar *cpf_CharacteristicFlags[] = {
+        "read",
+        NULL
+    };
+    bluez_gatt_descriptor1_set_flags(bgd, cpf_CharacteristicFlags);
+    bluez_gatt_descriptor1_set_characteristic(bgd, imei_characteristic_path);
+    g_signal_connect(bgd, "handle-read-value", G_CALLBACK(handle_read_cpf_value), NULL);
+    g_dbus_object_skeleton_add_interface(bos, G_DBUS_INTERFACE_SKELETON(bgd));
+    g_dbus_object_manager_server_export(services_om, G_DBUS_OBJECT_SKELETON(bos));
+    g_object_unref(bos);
+
+    /* cleanup */
     g_free(fsn_characteristic_path);
     g_free(imei_characteristic_path);
     g_free(service_path);
