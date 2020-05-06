@@ -18,7 +18,7 @@
 #include "org.bluez.GattDescriptor1.h"
 
 #define MODEM_INFO_FSN_CHARACTERISTIC_UUID "2A25"
-#define MODEM_INFO_IMEI_CHARACTERISTIC_UUID "865d"
+#define MODEM_INFO_IMEI_CHARACTERISTIC_UUID "fb22d0b6-7c72-4e29-a156-df6518f69ec4"
 #define CHARACTERISTIC_PRESENTATION_FORMAT_UUID "2904"
 
 static gboolean handle_read_fsn_value(
@@ -63,7 +63,16 @@ static gboolean handle_read_cpf_value(
     GVariant *options,
     gpointer user_data)
 {
-    guint8 custom_format[] = {25, 1, 0x00, 0x27, 1, 0x00, 0x00};
+    /**
+     * Characteristic Presentation Format for IMEI
+     * - Format:        0x19    (UTF-8 string)
+     * - Exponent:      0x00    (No change)
+     * - Unit:          0x2700  (Unitless)
+     * - Namespace:     0x01    (Bluetooth SIG Assigned Numbers)
+     * - Description:   0x0000  (Unknown)
+     */
+    guint8 custom_format[] = { 0x19, 0x00, 0x00, 0x27, 0x01, 0x00, 0x00 };
+
     g_print("%s called\n", __func__);
 
     GVariant *value = g_variant_new_fixed_array(
@@ -148,6 +157,7 @@ void modem_info_register_services(
     /* cleanup */
     g_free(fsn_characteristic_path);
     g_free(imei_characteristic_path);
+    g_free(cpf_characteristic_path);
     g_free(service_path);
 
     *num_services_registered += 1;
